@@ -9,17 +9,10 @@ type HelmUpdaterConfig struct {
 	DryRun         bool
 	LogLevel       string
 	AppName        string
-	UpdateApps     []Change
+	UpdateApps     []ChangeEntry
 	File           string
 	GitCredentials *git.Credentials
 	GitConf        *git.Conf
-}
-
-// Change contains the information about the change to be made
-type Change struct {
-	Key      string
-	NewValue string
-	OldValue string
 }
 
 // ChangeEntry represents values that has been changed by Helm Updater

@@ -36,10 +36,9 @@ func commitChangesLocked(cfg HelmUpdaterConfig, state *SyncIterationState) error
 // commitChangesGit commits any changes required for updating one or more values
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
-	var apps []Change
+	var apps []ChangeEntry
 	var skip bool
 	var gitCommitMessage string
-	changeList := make([]ChangeEntry, 0)
 
 	logCtx := log.WithContext().AddField("application", cfg.AppName)
 
@@ -104,18 +103,9 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 		return nil
 	}
 
-	for _, app := range apps {
-		changeList = append(changeList, ChangeEntry{
-			app.OldValue,
-			app.NewValue,
-			cfg.File,
-			app.Key,
-		})
-	}
-
 	commitOpts := &git.CommitOptions{}
 	if len(apps) > 0 && cfg.GitConf.Message != nil {
-		gitCommitMessage = TemplateCommitMessage(cfg.GitConf.Message, cfg.AppName, changeList)
+		gitCommitMessage = TemplateCommitMessage(cfg.GitConf.Message, cfg.AppName, apps)
 	}
 
 	if gitCommitMessage != "" {

@@ -44,9 +44,9 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		var updateApps []updater.Change
+		var updateApps []updater.ChangeEntry
 		for k, v := range helmKVs {
-			updateApps = append(updateApps, updater.Change{
+			updateApps = append(updateApps, updater.ChangeEntry{
 				Key:      k,
 				NewValue: v,
 			})

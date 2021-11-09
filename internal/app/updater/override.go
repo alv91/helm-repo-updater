@@ -12,10 +12,10 @@ import (
 
 var _ changeWriter = writeOverrides
 
-type changeWriter func(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []Change)
+type changeWriter func(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []ChangeEntry)
 
 //writeOverrides writes the overrides to the git files
-func writeOverrides(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []Change) {
+func writeOverrides(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []ChangeEntry) {
 	targetFile := path.Join(gitC.Root(), cfg.GitConf.File, cfg.File)
 
 	_, err = os.Stat(targetFile)
@@ -42,16 +42,16 @@ func writeOverrides(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip boo
 }
 
 // overrideValues overrides values in the given file
-func overrideValues(cfg HelmUpdaterConfig, targetFile string) ([]Change, error) {
+func overrideValues(cfg HelmUpdaterConfig, targetFile string) ([]ChangeEntry, error) {
 	var noChange int
 	var err error
 
-	apps := make([]Change, 0)
+	apps := make([]ChangeEntry, 0)
 	logCtx := log.WithContext().AddField("application", cfg.AppName)
 
 	for _, app := range cfg.UpdateApps {
 		// define new entry
-		var newEntry Change
+		var newEntry ChangeEntry
 		var oldValue, newValue string
 
 		// replace helm parameters

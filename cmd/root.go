@@ -18,7 +18,7 @@ type HelmUpdaterConfig struct {
 	DryRun           bool
 	LogLevel         string
 	AppName          string
-	UpdateApps       []updater.Change
+	UpdateApps       []updater.ChangeEntry
 	GitCommitMessage *template.Template
 	GitCredentials   *git.Credentials
 	GitConf          *git.Conf
@@ -40,13 +40,7 @@ type UpdateApp struct {
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "helm-repo-updater",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Helm repo updater",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
