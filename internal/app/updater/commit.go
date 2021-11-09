@@ -2,17 +2,29 @@ package updater
 
 import (
 	"fmt"
-	"github.com/argoproj-labs/argocd-image-updater/ext/git"
-	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
-	"os/exec"
-	"path"
-	"strings"
-
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+
+	"github.com/argoproj-labs/argocd-image-updater/ext/git"
+	"github.com/argoproj-labs/argocd-image-updater/pkg/log"
 )
 
+// UpdateApplication update all values of a single application.
+func UpdateApplication(cfg HelmUpdaterConfig, state *SyncIterationState) error {
+	err := commitChangesLocked(cfg, state)
+	if err != nil {
+		log.Errorf("Could not update application spec: %v", err)
+
+		return err
+	}
+
+	log.Infof("Successfully updated the live application spec")
+
+	return nil
+
+}
+
+// commitChangesLocked commits the changes to the git repository.
 func commitChangesLocked(cfg HelmUpdaterConfig, state *SyncIterationState) error {
 	lock := state.GetRepositoryLock(cfg.GitConf.RepoURL)
 	lock.Lock()
@@ -21,128 +33,15 @@ func commitChangesLocked(cfg HelmUpdaterConfig, state *SyncIterationState) error
 	return commitChangesGit(cfg, writeOverrides)
 }
 
-func writeOverrides(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []Application) {
-	targetFile := path.Join(gitC.Root(), cfg.GitConf.File, cfg.File)
-
-	var presented, patched []byte
-	var noChange, yamlErr int
-
-	apps = make([]Application, 0)
-
-	_, err = os.Stat(targetFile)
-	if err != nil {
-		log.Errorf("target file %s doesn't exist.", cfg.File)
-
-		return err, true, nil
-	}
-
-	for _, app :=range cfg.UpdateApps {
-		// check deployed app
-		presented, err = ioutil.ReadFile(targetFile)
-		if err != nil {
-			return err, true, nil
-		}
-
-		// replace helm parameters
-		err = yamlReplaceCMD(app, targetFile)
-		if err != nil {
-			log.Infof("failed to update key %s in %s: %v", app.Key, cfg.AppName, err)
-
-			yamlErr++
-		}
-
-		// check patched app
-		patched, err = ioutil.ReadFile(targetFile)
-		if err != nil {
-			return err, true, nil
-		}
-
-		// check if there is any change
-		if string(patched) == string(presented) {
-			log.Infof("target for key %s in %s is the same, skipping", app.Key, cfg.AppName)
-
-			noChange++
-		}
-
-
-		apps = append(apps, app)
-
-	}
-
-	if yamlErr == len(cfg.UpdateApps) {
-		return fmt.Errorf("failed during update helm files"), true, nil
-	}
-
-	// If the target file already exist in the repository, we will check whether
-	// our generated new file is the same as the existing one, and if yes, we
-	// don't proceed further for commit.
-	if noChange == len(cfg.UpdateApps) {
-		log.Debugf("target parameters file and marshaled data for all targets are the same, skipping commit.")
-
-		return nil, true, nil
-    }
-
-	err = gitC.Add(targetFile)
-
-	return nil, false, apps
-}
-
-func yamlReplaceCMD(app Application, targetFile string) error {
-    if !strings.HasPrefix(app.Key, ".") {
-		return fmt.Errorf("key %s doesn't start with '.'", app.Key)
-	}
-
-	cmd := fmt.Sprintf("yq eval -i '%s=\"%s\"' %s", app.Key, app.Image, targetFile)
-	exec := exec.Command("/bin/sh", "-c", cmd)
-	exec.Stdout = os.Stdout
-	exec.Stderr = os.Stderr
-
-	log.Debugf(exec.String())
-
-	err := exec.Run()
-	if err != nil {
-		return fmt.Errorf("cmd.Run() failed with %s\n")
-	}
-
-	return nil
-}
-
-type helmOverride struct {
-	Image *Image `json:"image"`
-}
-
-type Image struct {
-	Tag string `json:"tag"`
-}
-
-// marshalParamsOverride marshals the parameter overrides of a given application
-// into YAML bytes
-func marshalParamsOverride(cfg HelmUpdaterConfig) ([]byte, error) {
-	var override []byte
-	var err error
-
-	params := helmOverride{
-		Image: &Image{
-			Tag: cfg.UpdateApps[0].Image,
-		},
-	}
-	override, err = yaml.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return override, nil
-}
-
-var _ changeWriter = writeOverrides
-
-type changeWriter func(cfg HelmUpdaterConfig, gitC git.Client) (err error, skip bool, apps []Application)
-
-// commitChanges commits any changes required for updating one or more images
+// commitChangesGit commits any changes required for updating one or more values
 // after the UpdateApplication cycle has finished.
 func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
-	var apps []Application
+	var apps []Change
 	var skip bool
+	var gitCommitMessage string
+	changeList := make([]ChangeEntry, 0)
+
+	logCtx := log.WithContext().AddField("application", cfg.AppName)
 
 	creds, err := cfg.GitCredentials.NewCreds(cfg.GitConf.RepoURL)
 	if err != nil {
@@ -156,7 +55,7 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 	defer func() {
 		err := os.RemoveAll(tempRoot)
 		if err != nil {
-			log.Errorf("could not remove temp dir: %v", err)
+			logCtx.Errorf("could not remove temp dir: %v", err)
 		}
 	}()
 
@@ -184,10 +83,10 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 
 	checkOutBranch := cfg.GitConf.Branch
 
-	log.Tracef("targetRevision for update is '%s'", checkOutBranch)
+	logCtx.Tracef("targetRevision for update is '%s'", checkOutBranch)
 	if checkOutBranch == "" || checkOutBranch == "HEAD" {
 		checkOutBranch, err = gitC.SymRefToBranch(checkOutBranch)
-		log.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
+		logCtx.Infof("resolved remote default branch to '%s' and using that for operations", checkOutBranch)
 		if err != nil {
 			return err
 		}
@@ -198,10 +97,20 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 		return err
 	}
 
+	// write changes to files
 	if err, skip, apps = write(cfg, gitC); err != nil {
 		return err
 	} else if skip {
 		return nil
+	}
+
+	for _, app := range apps {
+		changeList = append(changeList, ChangeEntry{
+			app.OldValue,
+			app.NewValue,
+			cfg.File,
+			app.Key,
+		})
 	}
 
 	commitOpts := &git.CommitOptions{}
@@ -214,7 +123,7 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 		if err != nil {
 			return fmt.Errorf("cold not create temp file: %v", err)
 		}
-		log.Debugf("Writing commit message to %s", cm.Name())
+		logCtx.Debugf("Writing commit message to %s", cm.Name())
 		err = ioutil.WriteFile(cm.Name(), []byte(gitCommitMessage), 0600)
 		if err != nil {
 			_ = cm.Close()

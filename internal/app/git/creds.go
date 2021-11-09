@@ -5,15 +5,16 @@ import (
 	"github.com/argoproj-labs/argocd-image-updater/ext/git"
 )
 
-type GitCredentials struct {
+// Credentials is a git credential config
+type Credentials struct {
 	Username   string
 	Password   string
 	Email      string
 	SSHPrivKey string
 }
 
-
-func (g GitCredentials) NewCreds(repoURL string) (git.Creds, error) {
+// NewCreds returns the credentials for the given repo url.
+func (g Credentials) NewCreds(repoURL string) (git.Creds, error) {
 	if ok, _ := git.IsSSHURL(repoURL); ok {
 		if g.SSHPrivKey != "" {
 

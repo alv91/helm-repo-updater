@@ -2,18 +2,17 @@ package git
 
 import "text/template"
 
-// The default Git commit message's template
 const DefaultGitCommitMessage = `🚀 automatic update of {{ .AppName }}
 
-{{ range .AppChanges -}}
-updates key {{ .Image }} tag '{{ .OldTag }}' to '{{ .NewTag }}'
+{{ range .KeyChanges -}}
+updates key {{ .Key }} value from '{{ .OldValue }}' to '{{ .NewValue }}'
 {{ end -}}
 `
 
-type GitConf struct {
+// Conf is the configuration for the git client
+type Conf struct {
 	RepoURL string
 	Branch  string
 	File    string
 	Message *template.Template
 }
-
