@@ -124,6 +124,12 @@ func commitChangesGit(cfg HelmUpdaterConfig, write changeWriter) error {
 		defer os.Remove(cm.Name())
 	}
 
+	if cfg.DryRun {
+		logCtx.Infof("dry run, not committing changes")
+
+		return nil
+	}
+
 	err = gitC.Commit("", commitOpts)
 	if err != nil {
 		return err
